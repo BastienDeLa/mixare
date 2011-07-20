@@ -28,10 +28,20 @@ package org.mixare;
 
 import static android.hardware.SensorManager.SENSOR_DELAY_GAME;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+
+import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL;
+import javax.microedition.khronos.opengles.GL10;
+import javax.microedition.khronos.opengles.GL11;
 
 import org.mixare.R.drawable;
 import org.mixare.data.DataHandler;
@@ -49,6 +59,7 @@ import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.PixelFormat;
 import android.hardware.Camera;
 import android.hardware.GeomagneticField;
 import android.hardware.Sensor;
@@ -59,6 +70,7 @@ import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
@@ -82,6 +94,11 @@ import android.widget.Toast;
 
 public class MixView extends Activity implements SensorEventListener,LocationListener, OnTouchListener{
 
+	private static int displayHeight = 0;	
+	private static int displayWidth = 0;
+	
+	HorizonView hv;
+	
 	private CameraSurface camScreen;
 	private AugmentedView augScreen;
 
@@ -134,7 +151,15 @@ public class MixView extends Activity implements SensorEventListener,LocationLis
 
 	/*string to name & access the preference file in the internal storage*/
 	public static final String PREFS_NAME = "MyPrefsFileForMenuItems";
+	
+	public static int getDisplayHeight() {
+		return displayHeight;
+	}
 
+	public static int getDisplayWidth() {
+		return displayWidth;
+	}
+	
 	public boolean isGpsEnabled() {
 		return isGpsEnabled;
 	}
@@ -254,15 +279,22 @@ public class MixView extends Activity implements SensorEventListener,LocationLis
 
 			camScreen = new CameraSurface(this);
 			augScreen = new AugmentedView(this);
-			setContentView(camScreen);
+//			setContentView(camScreen);
 
+			hv = new HorizonView(this);
+//			addContentView(hv, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+			
+			setContentView(hv);
+			addContentView(camScreen, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+			
+		//TODO	
 			addContentView(augScreen, new LayoutParams(
 					LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
 
 			addContentView(frameLayout, new FrameLayout.LayoutParams(
 					LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT,
 					Gravity.BOTTOM));
-
+			
 			if (!isInited) {
 				mixContext = new MixContext(this);
 
@@ -375,6 +407,9 @@ public class MixView extends Activity implements SensorEventListener,LocationLis
 		} catch (Exception ex) {
 			doError(ex);
 		}
+		
+		// End application when returning to homescreen.
+		System.exit(0);
 	}
 
 	@Override
@@ -547,7 +582,7 @@ public class MixView extends Activity implements SensorEventListener,LocationLis
 		item5.setIcon(android.R.drawable.ic_menu_search);
 		item6.setIcon(android.R.drawable.ic_menu_info_details);
 		item7.setIcon(android.R.drawable.ic_menu_share);
-
+		
 		return true;
 	}
 
@@ -725,7 +760,7 @@ public class MixView extends Activity implements SensorEventListener,LocationLis
 				grav[0] = evt.values[0];
 				grav[1] = evt.values[1];
 				grav[2] = evt.values[2];
-
+				hv.setAccel(evt.values[2]);
 				augScreen.postInvalidate();
 			} else if (evt.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
 				mag[0] = evt.values[0];
@@ -1091,4 +1126,381 @@ class AugmentedView extends View {
 			app.doError(ex);
 		}
 	}
+}
+
+
+/**
+ * Class needed to draw the Horizon line
+ * @author Ferdinand
+ *
+ */
+	
+class HorizonView extends GLSurfaceView  implements GLSurfaceView.Renderer {
+	
+	private float accel = 0;
+	private float accel1 = 0;
+	private float accel2 = 0;
+	private float accel3 = 0;
+	private float accel4 = 0;
+	private float accel5 = 0; 
+		
+	private int height = 0;
+	private int width = 0;
+	
+	
+	public HorizonView(Context context) {
+		super(context);
+		setEGLConfigChooser(8,8,8,8,16,0);
+		setRenderer(this);
+		getHolder().setFormat(PixelFormat.TRANSLUCENT);
+		setZOrderOnTop(true);
+	}
+	
+	public void setAccel(float accel) {
+		this.accel = (-accel*(height*0.0012f));
+		this.accel1 = (-accel*(height*0.0016f));
+		this.accel2 = (-accel*(height*0.0019f));
+		this.accel3 = (-accel*(height*0.0022f));
+		this.accel4 = (-accel*(height*0.0024f));
+		this.accel5 = (-accel*(height*0.00255f));
+	}
+	
+	@Override
+	public void onDrawFrame(GL10 gl) {
+		gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
+		gl.glClearColor(0f, 0f, 0f, 0f);
+		gl.glLineWidth(1.0f);
+		gl.glColor4f(255f, 255f, 255f, 150f);
+		gl.glViewport(0, 0, width, height);
+
+		horizon(gl);
+		
+		firstGridLn(gl);
+		secondGridLn(gl);
+		thirdGridLn(gl);
+		fourthGridLn(gl);
+		fifthGridLn(gl);
+		
+		verticalGridLn(gl);
+		verticalGridLnR(gl);
+		verticalGridLnL(gl);
+		verticalGridLnR2(gl);
+		verticalGridLnL2(gl);
+		
+		
+		try {
+			Thread.sleep(100);
+		} catch (InterruptedException e) {
+		}
+	}
+	private void horizon(GL10 gl){
+		float vertices[] = { -width / 2, -accel, 0, width / 2, -accel, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glColor4f(0f, 0f, 255f, 150f);
+	}
+	
+	private void firstGridLn(GL10 gl){
+		float vertices[] = { -width / 2, -accel1, 0, width / 2, -accel1, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+	}
+	
+	private void secondGridLn(GL10 gl){
+		float vertices[] = { -width / 2, -accel2, 0, width / 2, -accel2, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+	}
+	
+	private void thirdGridLn(GL10 gl){
+		float vertices[] = { -width / 2, -accel3, 0, width / 3, -accel3, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+	}
+	
+	private void fourthGridLn(GL10 gl){
+		float vertices[] = { -width / 2, -accel4, 0, width / 3, -accel4, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+	}
+	private void fifthGridLn(GL10 gl){
+		float vertices[] = { -width / 2, -accel5, 0, width / 3, -accel5, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+	}
+	
+	private void verticalGridLn(GL10 gl){
+		float vertices[] = { 0, -accel5, 0, 0, -accel, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+	}
+	
+	private void verticalGridLnR(GL10 gl){
+		float vertices[] = { accel-accel5-accel*0.3f, -accel5, 0, accel-accel5, -accel, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+	}
+	
+	private void verticalGridLnL(GL10 gl){
+		float vertices[] = { -(accel-accel5)+accel*0.3f, -accel5, 0, -(accel-accel5), -accel, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+	}
+	
+	private void verticalGridLnR2(GL10 gl){
+		float vertices[] = { 2*(accel-accel5)-accel*0.3f, -accel5, 0, 2*(accel-accel5), -accel, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+	}
+	
+	private void verticalGridLnL2(GL10 gl){
+		float vertices[] = { -2*(accel-accel5)+accel*0.3f, -accel5, 0, -2*(accel-accel5), -accel, 0 };
+
+		ByteBuffer vbb = ByteBuffer.allocateDirect(vertices.length * 4);
+		vbb.order(ByteOrder.nativeOrder());
+		FloatBuffer vertexBuffer = vbb.asFloatBuffer();
+		vertexBuffer.put(vertices);
+		vertexBuffer.position(0);
+
+		// Enabled the vertex buffer for writing and to be used during
+		// rendering.
+		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertexBuffer);
+
+		short[] indices = { 0, 1 };
+		ByteBuffer ibb = ByteBuffer.allocateDirect(indices.length * 2);
+		ibb.order(ByteOrder.nativeOrder());
+		ShortBuffer indexBuffer = ibb.asShortBuffer();
+		indexBuffer.put(indices);
+		indexBuffer.position(0);
+
+		gl.glDrawElements(GL10.GL_LINE_STRIP, indices.length,
+				GL10.GL_UNSIGNED_SHORT, ibb);	
+		
+		gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+	}
+	
+
+	@Override
+	public void onSurfaceChanged(GL10 gl, int width, int height) {
+		gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
+		gl.glViewport(0, 0, width, height);
+	}
+
+	@Override
+	public void onSurfaceCreated(GL10 gl, EGLConfig config) {
+		height = this.getHeight();
+		width = this.getWidth();
+	}
+	
 }
