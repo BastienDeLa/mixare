@@ -671,23 +671,15 @@ public class MixView extends Activity implements SensorEventListener,LocationLis
 
 		int myZoomLevel = myZoomBar.getProgress();
 		float myout = 5;
-
-		if (myZoomLevel <= 26) {
-			myout = myZoomLevel / 25f;
-		} else if (25 < myZoomLevel && myZoomLevel < 50) {
-			myout = (1 + (myZoomLevel - 25)) * 0.38f;
-		} 
-		else if (25== myZoomLevel) {
-			myout = 1;
-		} 
-		else if (50== myZoomLevel) {
-			myout = 10;
-		} 
-		else if (50 < myZoomLevel && myZoomLevel < 75) {
-			myout = (10 + (myZoomLevel - 50)) * 0.83f;
-		} else {
-			myout = (30 + (myZoomLevel - 75) * 2f);
-		}
+		
+		if (myZoomLevel <= 25)
+			myout = myZoomLevel/25f;
+		else if (myZoomLevel <= 50)
+			myout = (-200+9*myZoomLevel)/25f;
+		else if (myZoomLevel <= 75)
+			myout = (-500+15*myZoomLevel)/25f;
+		else
+			myout = (-3500+55*myZoomLevel)/25f;
 
 		/*Twitter Json file not available for radius <1km 
 		 *smallest radius is set to 1km*/
@@ -1172,7 +1164,7 @@ class HorizonView extends GLSurfaceView  implements GLSurfaceView.Renderer {
 		gl.glLineWidth(1.0f);
 		gl.glColor4f(255f, 255f, 255f, 150f);
 		gl.glViewport(0, 0, width, height);
-
+		
 		horizon(gl);
 		
 		firstGridLn(gl);
@@ -1501,6 +1493,7 @@ class HorizonView extends GLSurfaceView  implements GLSurfaceView.Renderer {
 	public void onSurfaceCreated(GL10 gl, EGLConfig config) {
 		height = this.getHeight();
 		width = this.getWidth();
+		gl.glLoadIdentity();
 	}
 	
 }
